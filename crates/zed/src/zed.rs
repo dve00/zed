@@ -33,10 +33,11 @@ use git_ui::commit_view::CommitViewToolbar;
 use git_ui::git_panel::GitPanel;
 use git_ui::project_diff::{BranchDiffToolbar, ProjectDiffToolbar};
 use gpui::{
-    Action, App, AppContext as _, AsyncWindowContext, Context, DismissEvent, Element, Entity,
-    Focusable, KeyBinding, ParentElement, PathPromptOptions, PromptLevel, ReadGlobal, SharedString,
-    Task, TitlebarOptions, UpdateGlobal, WeakEntity, Window, WindowHandle, WindowKind,
-    WindowOptions, actions, image_cache, point, px, retain_all,
+    Action, App, AppContext as _, AsyncWindowContext, ClipboardItem, Context, DismissEvent,
+    Element, Entity, FocusHandle, Focusable, KeyBinding, ParentElement, PathPromptOptions,
+    PromptLevel, ReadGlobal, SharedString, Size, Task, TitlebarOptions, UpdateGlobal, WeakEntity,
+    Window, WindowBounds, WindowHandle, WindowKind, WindowOptions, actions, image_cache, point, px,
+    retain_all,
 };
 use image_viewer::ImageInfo;
 use language::Capability;
@@ -98,8 +99,8 @@ use workspace::{
 };
 use workspace::{Pane, notifications::DetachAndPromptErr};
 use zed_actions::{
-    OpenAccountSettings, OpenBrowser, OpenDocs, OpenServerSettings, OpenSettingsFile, OpenZedUrl,
-    Quit,
+    About, OpenAccountSettings, OpenBrowser, OpenDocs, OpenServerSettings, OpenSettingsFile,
+    OpenZedUrl, Quit,
 };
 
 actions!(
@@ -283,10 +284,8 @@ pub fn init(cx: &mut App) {
             );
         });
     })
-    .on_action(|_: &zed_actions::About, cx| {
-        with_active_or_new_workspace(cx, |workspace, window, cx| {
-            about(workspace, window, cx);
-        });
+    .on_action(|_: &About, cx| {
+        open_about_window(cx);
     });
 }
 
@@ -1218,44 +1217,109 @@ fn initialize_pane(
     });
 }
 
-fn about(_: &mut Workspace, window: &mut Window, cx: &mut Context<Workspace>) {
-    use std::fmt::Write;
-    let release_channel = ReleaseChannel::global(cx).display_name();
-    let full_version = AppVersion::global(cx);
-    let version = env!("CARGO_PKG_VERSION");
-    let debug = if cfg!(debug_assertions) {
-        "(debug)"
-    } else {
-        ""
-    };
-    let message = format!("{release_channel} {version} {debug}");
-
-    let mut detail = AppCommitSha::try_global(cx)
-        .map(|sha| sha.full())
-        .unwrap_or_default();
-    if !detail.is_empty() {
-        detail.push('\n');
+fn open_about_window(cx: &mut App) {
+    struct AboutWindow {
+        focus_handle: FocusHandle,
+        message: SharedString,
+        detail: SharedString,
     }
-    _ = write!(&mut detail, "\n{full_version}");
 
-    let detail = Some(detail);
+    impl AboutWindow {
+        fn new(cx: &mut Context<Self>) -> Self {
+            let release_channel = ReleaseChannel::global(cx).display_name();
+            let full_version = AppVersion::global(cx);
+            let version = env!("CARGO_PKG_VERSION");
+            let debug = if cfg!(debug_assertions) {
+                "(debug)"
+            } else {
+                ""
+            };
+            let message: SharedString = format!("{release_channel} {version} {debug}").into();
 
-    let prompt = window.prompt(
-        PromptLevel::Info,
-        &message,
-        detail.as_deref(),
-        &["Copy", "OK"],
-        cx,
-    );
-    cx.spawn(async move |_, cx| {
-        if let Ok(0) = prompt.await {
-            let content = format!("{}\n{}", message, detail.as_deref().unwrap_or(""));
-            cx.update(|cx| {
-                cx.write_to_clipboard(gpui::ClipboardItem::new_string(content));
-            });
+            let mut detail = AppCommitSha::try_global(cx)
+                .map(|sha| sha.full())
+                .unwrap_or_default();
+            if !detail.is_empty() {
+                detail.push('\n');
+            }
+            use std::fmt::Write;
+            _ = write!(&mut detail, "\n{full_version}");
+            let detail: SharedString = detail.into();
+
+            Self {
+                focus_handle: cx.focus_handle(),
+                message,
+                detail,
+            }
         }
-    })
-    .detach();
+    }
+
+    impl Render for AboutWindow {
+        fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            let message = self.message.clone();
+            let detail = self.detail.clone();
+
+            v_flex()
+                .id("about-window")
+                .track_focus(&self.focus_handle)
+                .on_action(cx.listener(|_, _: &menu::Cancel, window, _cx| {
+                    window.remove_window();
+                }))
+                .size_full()
+                .p_4()
+                .when(cfg!(target_os = "macos"), |this| this.pt_10())
+                .gap_2()
+                .bg(cx.theme().colors().editor_background)
+                .text_color(cx.theme().colors().text)
+                .child(Label::new(self.message.clone()))
+                .child(Label::new(self.detail.clone()))
+                .child(
+                    Button::new("copy", "Copy").on_click(cx.listener(move |_, _, _, cx| {
+                        let content = format!("{}\n{}", message, detail);
+                        cx.write_to_clipboard(ClipboardItem::new_string(content));
+                    })),
+                )
+        }
+    }
+
+    impl Focusable for AboutWindow {
+        fn focus_handle(&self, _cx: &App) -> FocusHandle {
+            self.focus_handle.clone()
+        }
+    }
+
+    // Don't open about window twice
+    if let Some(existing) = cx
+        .windows()
+        .into_iter()
+        .find_map(|w| w.downcast::<AboutWindow>())
+    {
+        existing
+            .update(cx, |_, window, _| window.activate_window())
+            .log_err();
+        return;
+    }
+
+    let window_size = Size {
+        width: px(400.),
+        height: px(200.),
+    };
+    cx.open_window(
+        WindowOptions {
+            titlebar: Some(TitlebarOptions {
+                title: Some("About Zed".into()),
+                appears_transparent: true,
+                traffic_light_position: Some(point(px(12.), px(12.))),
+            }),
+            window_bounds: Some(WindowBounds::centered(window_size, cx)),
+            is_resizable: false,
+            kind: WindowKind::Normal,
+            app_id: Some(ReleaseChannel::global(cx).app_id().to_owned()),
+            ..Default::default()
+        },
+        |_, cx| cx.new(AboutWindow::new),
+    )
+    .log_err();
 }
 
 #[cfg(not(target_os = "windows"))]
