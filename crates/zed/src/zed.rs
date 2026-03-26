@@ -1317,12 +1317,11 @@ fn open_about_window(cx: &mut App) {
                     window.remove_window();
                 }))
                 .size_full()
-                .bg(cx.theme().colors().elevated_surface_background)
+                .bg(cx.theme().colors().background)
                 .text_color(cx.theme().colors().text)
                 .child(
                     v_flex()
                         .p_4()
-                        // avoid rendering text behind MacOS traffic light buttons
                         .when(cfg!(target_os = "macos"), |this| this.pt_10())
                         .gap_2()
                         .child(Headline::new(self.message.clone()).size(HeadlineSize::Medium))
