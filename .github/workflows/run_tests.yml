@@ -106,6 +106,14 @@ jobs:
         check_pattern "run_tests" '^(docs/|script/update_top_ranking_issues/|\.github/(ISSUE_TEMPLATE|workflows/(?!run_tests))|extensions/)' -qvP
         # Detect changed extension directories (excluding extensions/workflows)
         CHANGED_EXTENSIONS=$(echo "$CHANGED_FILES" | grep -oP '^extensions/[^/]+(?=/)' | sort -u | grep -v '^extensions/workflows$' || true)
+        # Filter out deleted extensions
+        EXISTING_EXTENSIONS=""
+        for ext in $CHANGED_EXTENSIONS; do
+            if [ -f "$ext/extension.toml" ]; then
+                EXISTING_EXTENSIONS=$(printf '%s\n%s' "$EXISTING_EXTENSIONS" "$ext")
+            fi
+        done
+        CHANGED_EXTENSIONS=$(echo "$EXISTING_EXTENSIONS" | sed '/^$/d')
         if [ -n "$CHANGED_EXTENSIONS" ]; then
             EXTENSIONS_JSON=$(echo "$CHANGED_EXTENSIONS" | jq -R -s -c 'split("\n") | map(select(length > 0))')
         else
@@ -128,7 +136,7 @@ jobs:
       with:
         clean: false
     - name: steps::cache_rust_dependencies_namespace
-      uses: namespacelabs/nscloud-cache-action@v1
+      uses: namespacelabs/nscloud-cache-action@a90bb5d4b27522ce881c6e98eebd7d7e6d1653f9
       with:
         cache: rust
         path: ~/.rustup
@@ -212,7 +220,7 @@ jobs:
         mkdir -p ./../.cargo
         cp ./.cargo/ci-config.toml ./../.cargo/config.toml
     - name: steps::cache_rust_dependencies_namespace
-      uses: namespacelabs/nscloud-cache-action@v1
+      uses: namespacelabs/nscloud-cache-action@a90bb5d4b27522ce881c6e98eebd7d7e6d1653f9
       with:
         cache: rust
         path: ~/.rustup
@@ -247,7 +255,7 @@ jobs:
         mkdir -p ./../.cargo
         cp ./.cargo/ci-config.toml ./../.cargo/config.toml
     - name: steps::cache_rust_dependencies_namespace
-      uses: namespacelabs/nscloud-cache-action@v1
+      uses: namespacelabs/nscloud-cache-action@a90bb5d4b27522ce881c6e98eebd7d7e6d1653f9
       with:
         cache: rust
         path: ~/.rustup
@@ -278,7 +286,7 @@ jobs:
         mkdir -p ./../.cargo
         cp ./.cargo/ci-config.toml ./../.cargo/config.toml
     - name: steps::cache_rust_dependencies_namespace
-      uses: namespacelabs/nscloud-cache-action@v1
+      uses: namespacelabs/nscloud-cache-action@a90bb5d4b27522ce881c6e98eebd7d7e6d1653f9
       with:
         cache: rust
         path: ~/.rustup
@@ -356,7 +364,7 @@ jobs:
         mkdir -p ./../.cargo
         cp ./.cargo/ci-config.toml ./../.cargo/config.toml
     - name: steps::cache_rust_dependencies_namespace
-      uses: namespacelabs/nscloud-cache-action@v1
+      uses: namespacelabs/nscloud-cache-action@a90bb5d4b27522ce881c6e98eebd7d7e6d1653f9
       with:
         cache: rust
         path: ~/.rustup
@@ -369,7 +377,7 @@ jobs:
       with:
         node-version: '20'
     - name: steps::cargo_install_nextest
-      uses: taiki-e/install-action@nextest
+      uses: taiki-e/install-action@921e2c9f7148d7ba14cd819f417db338f63e733c
     - name: steps::clear_target_dir_if_large
       run: ./script/clear-target-dir-if-larger-than 250
     - name: steps::setup_sccache
@@ -411,7 +419,7 @@ jobs:
         mkdir -p ./../.cargo
         cp ./.cargo/ci-config.toml ./../.cargo/config.toml
     - name: steps::cache_rust_dependencies_namespace
-      uses: namespacelabs/nscloud-cache-action@v1
+      uses: namespacelabs/nscloud-cache-action@a90bb5d4b27522ce881c6e98eebd7d7e6d1653f9
       with:
         cache: rust
         path: ~/.rustup
@@ -420,7 +428,7 @@ jobs:
       with:
         node-version: '20'
     - name: steps::cargo_install_nextest
-      uses: taiki-e/install-action@nextest
+      uses: taiki-e/install-action@921e2c9f7148d7ba14cd819f417db338f63e733c
     - name: steps::clear_target_dir_if_large
       run: ./script/clear-target-dir-if-larger-than 300
     - name: steps::setup_sccache
@@ -453,7 +461,7 @@ jobs:
       with:
         clean: false
     - name: steps::cache_rust_dependencies_namespace
-      uses: namespacelabs/nscloud-cache-action@v1
+      uses: namespacelabs/nscloud-cache-action@a90bb5d4b27522ce881c6e98eebd7d7e6d1653f9
       with:
         cache: rust
         path: ~/.rustup
@@ -501,7 +509,7 @@ jobs:
         mkdir -p ./../.cargo
         cp ./.cargo/ci-config.toml ./../.cargo/config.toml
     - name: steps::cache_rust_dependencies_namespace
-      uses: namespacelabs/nscloud-cache-action@v1
+      uses: namespacelabs/nscloud-cache-action@a90bb5d4b27522ce881c6e98eebd7d7e6d1653f9
       with:
         cache: rust
         path: ~/.rustup
@@ -542,7 +550,7 @@ jobs:
         mkdir -p ./../.cargo
         cp ./.cargo/ci-config.toml ./../.cargo/config.toml
     - name: steps::cache_rust_dependencies_namespace
-      uses: namespacelabs/nscloud-cache-action@v1
+      uses: namespacelabs/nscloud-cache-action@a90bb5d4b27522ce881c6e98eebd7d7e6d1653f9
       with:
         cache: rust
         path: ~/.rustup
@@ -580,7 +588,7 @@ jobs:
       with:
         clean: false
     - name: steps::cache_rust_dependencies_namespace
-      uses: namespacelabs/nscloud-cache-action@v1
+      uses: namespacelabs/nscloud-cache-action@a90bb5d4b27522ce881c6e98eebd7d7e6d1653f9
       with:
         cache: rust
         path: ~/.rustup
@@ -619,7 +627,7 @@ jobs:
         mkdir -p ./../.cargo
         cp ./.cargo/ci-config.toml ./../.cargo/config.toml
     - name: steps::cache_rust_dependencies_namespace
-      uses: namespacelabs/nscloud-cache-action@v1
+      uses: namespacelabs/nscloud-cache-action@a90bb5d4b27522ce881c6e98eebd7d7e6d1653f9
       with:
         cache: rust
         path: ~/.rustup
@@ -661,7 +669,7 @@ jobs:
       with:
         clean: false
     - name: steps::cache_rust_dependencies_namespace
-      uses: namespacelabs/nscloud-cache-action@v1
+      uses: namespacelabs/nscloud-cache-action@a90bb5d4b27522ce881c6e98eebd7d7e6d1653f9
       with:
         cache: rust
         path: ~/.rustup
@@ -689,7 +697,7 @@ jobs:
       env:
         ACTIONLINT_BIN: ${{ steps.get_actionlint.outputs.executable }}
     - name: steps::cache_rust_dependencies_namespace
-      uses: namespacelabs/nscloud-cache-action@v1
+      uses: namespacelabs/nscloud-cache-action@a90bb5d4b27522ce881c6e98eebd7d7e6d1653f9
       with:
         cache: rust
         path: ~/.rustup
