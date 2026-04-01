@@ -1379,7 +1379,13 @@ fn open_about_window(cx: &mut App) {
             app_id: Some(ReleaseChannel::global(cx).app_id().to_owned()),
             ..Default::default()
         },
-        |_, cx| cx.new(AboutWindow::new),
+        |window, cx| {
+            let about_window = cx.new(AboutWindow::new);
+            let focus_handle = about_window.read(cx).focus_handle(cx);
+            window.activate_window();
+            window.focus(&focus_handle, cx);
+            about_window
+        },
     )
     .log_err();
 }
