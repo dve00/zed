@@ -34,10 +34,10 @@ use git_ui::git_panel::GitPanel;
 use git_ui::project_diff::{BranchDiffToolbar, ProjectDiffToolbar};
 use gpui::{
     Action, App, AppContext as _, AsyncWindowContext, ClipboardItem, Context, DismissEvent,
-    Element, Entity, FocusHandle, Focusable, KeyBinding, ParentElement, PathPromptOptions,
-    PromptLevel, ReadGlobal, SharedString, Size, Task, TitlebarOptions, UpdateGlobal, WeakEntity,
-    Window, WindowBounds, WindowHandle, WindowKind, WindowOptions, actions, image_cache, point, px,
-    retain_all,
+    Element, Entity, FocusHandle, Focusable, Image, ImageFormat, KeyBinding, ParentElement,
+    PathPromptOptions, PromptLevel, ReadGlobal, SharedString, Size, Task, TitlebarOptions,
+    UpdateGlobal, WeakEntity, Window, WindowBounds, WindowHandle, WindowKind, WindowOptions,
+    actions, image_cache, img, point, px, retain_all,
 };
 use image_viewer::ImageInfo;
 use language::Capability;
@@ -77,7 +77,7 @@ use std::{
     sync::atomic::{self, AtomicBool},
 };
 use terminal_view::terminal_panel::{self, TerminalPanel};
-use theme::{ActiveTheme, GlobalTheme, SystemAppearance, ThemeRegistry, deserialize_icon_theme};
+use theme::{ActiveTheme, SystemAppearance, ThemeRegistry, deserialize_icon_theme};
 use theme_settings::{ThemeSettings, load_user_theme};
 use ui::{PopoverMenuHandle, TintColor, prelude::*};
 use util::markdown::MarkdownString;
@@ -1249,38 +1249,53 @@ fn initialize_pane(
 }
 
 fn open_about_window(cx: &mut App) {
+    fn about_window_icon(release_channel: ReleaseChannel) -> Arc<Image> {
+        let bytes = match release_channel {
+            ReleaseChannel::Dev => include_bytes!("../resources/app-icon-dev.png").as_slice(),
+            ReleaseChannel::Nightly => {
+                include_bytes!("../resources/app-icon-nightly.png").as_slice()
+            }
+            ReleaseChannel::Preview => {
+                include_bytes!("../resources/app-icon-preview.png").as_slice()
+            }
+            ReleaseChannel::Stable => include_bytes!("../resources/app-icon.png").as_slice(),
+        };
+
+        Arc::new(Image::from_bytes(ImageFormat::Png, bytes.to_vec()))
+    }
+
     struct AboutWindow {
         focus_handle: FocusHandle,
+        app_icon: Arc<Image>,
         message: SharedString,
-        detail: SharedString,
+        commit: Option<SharedString>,
+        full_version: SharedString,
     }
 
     impl AboutWindow {
         fn new(cx: &mut Context<Self>) -> Self {
-            let release_channel = ReleaseChannel::global(cx).display_name();
-            let full_version = AppVersion::global(cx);
+            let release_channel = ReleaseChannel::global(cx);
+            let release_channel_name = release_channel.display_name();
+            let full_version: SharedString = AppVersion::global(cx).to_string().into();
             let version = env!("CARGO_PKG_VERSION");
+
             let debug = if cfg!(debug_assertions) {
                 "(debug)"
             } else {
                 ""
             };
-            let message: SharedString = format!("{release_channel} {version} {debug}").into();
-
-            let mut detail = AppCommitSha::try_global(cx)
+            let message: SharedString = format!("{release_channel_name} {version} {debug}").into();
+            let commit = AppCommitSha::try_global(cx)
                 .map(|sha| sha.full())
-                .unwrap_or_default();
-            if !detail.is_empty() {
-                detail.push('\n');
-            }
-            use std::fmt::Write;
-            _ = write!(&mut detail, "\n{full_version}");
-            let detail: SharedString = detail.into();
+                .filter(|commit| !commit.is_empty())
+                .map(SharedString::from);
 
             Self {
                 focus_handle: cx.focus_handle(),
+                app_icon: about_window_icon(release_channel),
                 message,
-                detail,
+                commit,
+                full_version,
             }
         }
     }
@@ -1288,7 +1303,8 @@ fn open_about_window(cx: &mut App) {
     impl Render for AboutWindow {
         fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
             let message = self.message.clone();
-            let detail = self.detail.clone();
+            let commit = self.commit.clone();
+            let full_version = self.full_version.clone();
 
             v_flex()
                 .id("about-window")
@@ -1296,31 +1312,46 @@ fn open_about_window(cx: &mut App) {
                 .on_action(cx.listener(|_, _: &menu::Cancel, window, _cx| {
                     window.remove_window();
                 }))
+                .min_w_0()
                 .size_full()
-                .bg(cx.theme().colors().background)
+                .bg(cx.theme().colors().editor_background)
                 .text_color(cx.theme().colors().text)
+                .p_4()
+                .when(cfg!(target_os = "macos"), |this| this.pt_10())
+                .gap_4()
+                .text_center()
+                .justify_between()
                 .child(
                     v_flex()
-                        .p_4()
-                        .when(cfg!(target_os = "macos"), |this| this.pt_10())
+                        .w_full()
                         .gap_2()
-                        .child(Headline::new(self.message.clone()).size(HeadlineSize::Medium))
+                        .items_center()
+                        .child(img(self.app_icon.clone()).size_16().flex_none())
+                        .child(Headline::new(self.message.clone()))
+                        .when_some(self.commit.clone(), |this, commit| {
+                            this.child(
+                                Label::new("Commit")
+                                    .color(Color::Muted)
+                                    .size(LabelSize::XSmall),
+                            )
+                            .child(Label::new(commit).size(LabelSize::Small))
+                        })
                         .child(
-                            Label::new(self.detail.clone())
+                            Label::new("Version")
                                 .color(Color::Muted)
-                                .size(LabelSize::Small),
-                        ),
+                                .size(LabelSize::XSmall),
+                        )
+                        .child(Label::new(self.full_version.clone()).size(LabelSize::Small)),
                 )
                 .child(
                     h_flex()
-                        .p_3()
-                        .gap_2()
+                        .w_full()
+                        .gap_1()
                         .child(
                             div().flex_1().child(
                                 Button::new("ok", "Ok")
                                     .full_width()
-                                    .size(ButtonSize::Large)
-                                    .style(ButtonStyle::Filled)
+                                    .style(ButtonStyle::OutlinedGhost)
                                     .on_click(cx.listener(|_, _, window, _cx| {
                                         window.remove_window();
                                     })),
@@ -1330,10 +1361,14 @@ fn open_about_window(cx: &mut App) {
                             div().flex_1().child(
                                 Button::new("copy", "Copy")
                                     .full_width()
-                                    .size(ButtonSize::Large)
                                     .style(ButtonStyle::Tinted(TintColor::Accent))
                                     .on_click(cx.listener(move |_, _, window, cx| {
-                                        let content = format!("{}\n{}", message, detail);
+                                        let content = match commit.as_ref() {
+                                            Some(commit) => {
+                                                format!("{message}\nCommit: {commit}\nVersion: {full_version}")
+                                            }
+                                            None => format!("{message}\nVersion: {full_version}"),
+                                        };
                                         cx.write_to_clipboard(ClipboardItem::new_string(content));
                                         window.remove_window();
                                     })),
@@ -1356,15 +1391,19 @@ fn open_about_window(cx: &mut App) {
         .find_map(|w| w.downcast::<AboutWindow>())
     {
         existing
-            .update(cx, |_, window, _| window.activate_window())
+            .update(cx, |about_window, window, cx| {
+                window.activate_window();
+                window.focus(&about_window.focus_handle(cx), cx);
+            })
             .log_err();
         return;
     }
 
     let window_size = Size {
-        width: px(400.),
-        height: px(200.),
+        width: px(440.),
+        height: px(300.),
     };
+
     cx.open_window(
         WindowOptions {
             titlebar: Some(TitlebarOptions {
